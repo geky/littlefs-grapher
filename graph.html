@@ -1,0 +1,71 @@
+<html>
+<head>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css" rel="stylesheet" type="text/css" />
+
+    <style type="text/css">
+        #mynetwork {
+            width: 100%;
+            height: 100%;
+            border: 1px solid lightgray;
+        }
+    </style>
+</head>
+<body>
+<div id="mynetwork"></div>
+
+<script type="text/javascript">
+    // get the data
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'data.json', true);
+    xhr.responseType = 'json';
+    xhr.onload = function() {
+        data = xhr.response
+
+        var nodes = new vis.DataSet(data.nodes)
+        var edges = new vis.DataSet(data.edges)
+
+        // create a network
+        var container = document.getElementById('mynetwork');
+
+        // provide the data in the vis format
+        var data = {
+            nodes: nodes,
+            edges: edges
+        };
+        var options = {
+            layout: {
+                //hierarchical: {
+                //    direction: 'LR',
+                //},
+            },
+            edges: {
+                arrows: 'to',
+                font: {
+                    align: 'middle'
+                }
+            },
+            nodes: {
+                shape: 'box',
+                widthConstraint: {
+                    //minimum: 50,
+                },
+                heightConstraint: {
+                    //minimum: 65,
+                    valign: 'top',
+                },
+                font: {
+                    face: 'Monospace',
+                    align: 'left',
+                    size: 9,
+                }
+            }
+        };
+
+        // initialize your network!
+        var network = new vis.Network(container, data, options);
+    };
+    xhr.send();
+</script>
+</body>
+</html>
