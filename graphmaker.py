@@ -44,7 +44,12 @@ def get_dir(pair):
 def popc(x):
     return bin(x).count('1')
 
+def ctz(x):
+    b = bin(x)
+    return len(b) - len(b.rstrip('0'))
+
 def ctz_index(size):
+    size -= 1
     b = BLOCK_SIZE - 2*4
     i = size // b
     if i == 0:
@@ -57,15 +62,18 @@ def ctz_index(size):
 def iter_file(path, head, size):
     inithead, depth = head, 0
     i, _ = ctz_index(size)
-    while i != 0:
+    while i > 0:
         dat = get_block(head)
         next, = struct.unpack('<I', dat[0:4])
-
         yield 'filex', 'list', path, (head, next, inithead, depth)
 
+        for j in range(1, ctz(i)+1):
+            farnext, = struct.unpack('<I', dat[4*j:4*j+4])
+            yield 'filexx', 'list', path, (head, farnext)
+
         head = next
-        i -= 1
         depth += 1
+        i -= 1
 
 def iter_dir(path, dat):
     size, = struct.unpack('<I', dat[4:8])
@@ -168,9 +176,9 @@ def get_nodes_and_edges():
                         'edge': (block, edge)
                     })
                 elif ntype == 'filex':
-##                    assert (edge[1] not in nodes or
-##                            nodes[edge[1]]['type'].startswith('file')), (
-##                            "block %d is not a file!" % edge[1])
+#                    assert (edge[1] not in nodes or
+#                            nodes[edge[1]]['type'].startswith('file')), (
+#                            "block %d is not a file!" % edge[1])
                     if edge[1] not in nodes:
                         nodes[edge[1]] = {
                             'block': edge[1],
@@ -182,6 +190,11 @@ def get_nodes_and_edges():
                     edges.append({
                         'type': etype,
                         'edge': edge[:2]
+                    })
+                elif ntype == 'filexx':
+                    edges.append({
+                        'type': etype,
+                        'edge': edge
                     })
                 else:
                     assert False, 'Unknown type %r' % ntype
@@ -202,23 +215,15 @@ def main(disk, block_size=512):
         blocks = {node['block']: node for node in nodes}
         parents = {}
         preds = {}
-        lists = {}
         for edge in edges:
             if edge['type'] == 'child':
                 parents[edge['edge'][1]] = edge['edge'][0]
             elif edge['type'] == 'tail' or edge['type'] == 'tailx':
                 preds[edge['edge'][1]] = edge['edge'][0]
-            elif edge['type'] == 'list':
-                lists[edge['edge'][1]] = edge['edge'][0]
 
         def realparent(p, default=None):
-            while p not in parents:
-                if p in preds:
-                    p = preds[p]
-#                elif p in lists and p not in {0,1}:
-#                    p = lists[p]
-                else:
-                    break
+            while p not in parents and p in preds:
+                p = preds[p]
 
             return parents[p] if p in parents else default
 
@@ -241,9 +246,6 @@ def main(disk, block_size=512):
                 elif p in preds:
                     p = preds[p]
                     orphan = False
-                elif p in lists and p not in {0, 1}:
-                    p = lists[p]
-                    y += 1
                 else:
                     break
             
@@ -262,64 +264,38 @@ def main(disk, block_size=512):
                 node for y in range(maxy)
                 for node in nodes
                 if node['y'] == y]):
-            # dir children
             children = [n for n in nodes
                 if realparent(n['block'], None) == node.get('block', None)]
 
             def key(c):
                 return (0 if c['type'].startswith('dir') else 1,
                         tailcount(c['block']), c['path'],
-                        0 if c['type'] == 'dirx' else 1)
+                        1 if c['type'] == 'dirx' else 0)
 
-            sys.stderr.write(repr(node)+'\n')
-            total = node.get('x', 1) - 1
+            total = node.get('x', 0)
+            ptotal = total
             for child in sorted(children, key=key):
-                child['x'] = total
+                if child['type'] == 'dirx':
+                    child['x'] = ptotal + 1
+                else:
+                    child['x'] = total
+                ptotal = total
                 total += child.get('width', 1)
 
         for node in nodes:
             if node['type'] == 'file' and node['block'] not in parents:
                 head = blocks[node['head']]
                 node['x'] = head['x']
-                node['y'] = head['y'] + node['depth'] + 1
-
-                
-
-            # file lists
-#            for n in nodes:
-#                if n['type'] == 'filex':
-#                    if (n['block'] in lists and
-#                            lists[n['block']] == node.get('block', None)):
-#                        n['x'] += node['x']+1
-                    
-#            
-#
-#            p, x = node['block'], 0
-#            while True:
-#                if p in parents:
-#                    p = parents[p]
-#                elif p in preds:
-#                    p = preds[p]
-#                    x += 2
-#                else:
-#                    break
-#            node['x'] = x
-#            if node['type'] == 'dir':
-#                node['x'] += 1
-#            elif node['type'] == 'file':
-#                node['x'] += 1000
-#                sys.stderr.write(repr(node['x']) + '\n')
-#
+                node['y'] = head['y'] + 0.75*(node['depth'] + 1)
 
         for node in nodes:
             visnodes.append({
-                'label': '%s %s\nblock %x\n%s%s' % (
+                'label': '%s %s\nblock %x%s' % (
                     node['type'], node['path'], node['block'],
-                    '%s\n' % node['reason'] if node['type'] == 'dirx' else '',
-                    node.get('x', 1)),
+                    '\n%s' % node['reason'] if node['type'] == 'dirx' else ''),
                 'id': node['block'],
                 'group': node['path'],
-                'x': 100*2*node['y'], # + (0 if node['type'] == 'dirx' else 1),
+                'x': 200*node['y'], # + (0 if node['type'] == 'dirx' else 1),
                 'y': 100*node['x'],
                 'fixed': True, #node['type'] != 'filex'
             })
@@ -328,11 +304,15 @@ def main(disk, block_size=512):
             visedges.append({
                 'arrows': 'to' if edge['type'] != 'pair' else '',
                 'dashes': edge['type'] in ('pair', 'tailx'),
-                'physics': edge['type'] != 'tailx',
+                #'physics': edge['type'] != 'tailx',
                 #'length': None if edge['type'] != 'pair' else 10,
                 'title': edge['type'],
                 'from': edge['edge'][0],
-                'to': edge['edge'][1]
+                'to': edge['edge'][1],
+                'smooth': False if edge['type'] in ('child', 'pair') else {
+                    'type': 'curvedCW',
+                    'roundness': 0.2,
+                } if edge['type'] == 'list' else True
             })
 
         vis = {'nodes': visnodes, 'edges': visedges}
