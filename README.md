@@ -17,5 +17,4 @@ $
 
 You can find an example (with the [littlefs](https://github.com/geky/littlefs)
 source tree) on the gh_pages branch:  
-https://geky.github.io/littlefs-grapher
-
+https://geky.github.io/littlefs-grapher/graph.html
