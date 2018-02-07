@@ -8,6 +8,7 @@ import itertools
 
 DISK = None
 BLOCK_SIZE = None
+BLOCK_COUNT = None
 
 # Get a block as string from disk
 def get_block(block):
@@ -77,11 +78,12 @@ def iter_file(path, head, size):
 
 def iter_dir(path, dat):
     size, = struct.unpack('<I', dat[4:8])
-    tail = struct.unpack('<II', dat[8:16])
+    tail = set(struct.unpack('<II', dat[8:16]))
     if size & 0x80000000:
-        yield 'dir', 'tail', path, set(tail)
+        yield 'dir', 'tail', path, tail
     else:
-        yield 'dir', 'tailx', None, set(tail)
+        if tail != {0xffffffff}:
+            yield 'dir', 'tailx', None, tail
 
     off = 16
     size = (0x7fffffff & size) - 4
@@ -204,17 +206,22 @@ def get_nodes_and_edges():
 def main(disk, block_size=512):
     global DISK
     global BLOCK_SIZE
+    global BLOCK_COUNT
 
     with open(disk, 'rb') as disk:
         DISK = disk
         BLOCK_SIZE = block_size
+        disk.seek(0, 2)
+        BLOCK_COUNT = disk.tell() / BLOCK_SIZE
 
         nodes, edges = get_nodes_and_edges()
-        visnodes, visedges = [], []
+        visnodes, visedges, visblocks = [], [], {}
 
         blocks = {node['block']: node for node in nodes}
         parents = {}
         preds = {}
+        invalids = set()
+
         for edge in edges:
             if edge['type'] == 'child':
                 parents[edge['edge'][1]] = edge['edge'][0]
@@ -289,23 +296,39 @@ def main(disk, block_size=512):
                 node['y'] = head['y'] + 0.75*(node['depth'] + 1)
 
         for node in nodes:
-            visnodes.append({
-                'label': '%s %s\nblock %x%s' % (
+            if node['block'] < BLOCK_COUNT:
+                info = '%s %s\nblock %x\n%s\n' % (
                     node['type'], node['path'], node['block'],
-                    '\n%s' % node['reason'] if node['type'] == 'dirx' else ''),
-                'id': node['block'],
-                'group': node['path'],
-                'x': 200*node['y'], # + (0 if node['type'] == 'dirx' else 1),
-                'y': 100*node['x'],
-                'fixed': True, #node['type'] != 'filex'
-            })
+                    node['reason'] if node['type'] == 'dirx' else '')
+
+                visnodes.append({
+                    'label': info,
+                    'id': node['block'],
+                    'group': node['path'],
+                    'x': 200*node['y'], # + (0 if node['type'] == 'dirx' else 1),
+                    'y': 100*node['x'],
+                    'fixed': True, #node['type'] != 'filex'
+                })
+
+                visblocks[node['block']] = {
+                    'info': info,
+                    'raw': get_block(node['block']).encode('base64')
+                }
 
         for edge in edges:
+            if (edge['edge'][1] >= BLOCK_COUNT and
+                edge['edge'][1] not in invalids):
+                visnodes.append({
+                    'label': 'invalid\nblock %x\n\n' % edge['edge'][1],
+                    'id': edge['edge'][1],
+                    'group': 'invalid',
+                })
+                invalids.add(edge['edge'][1])
+
             visedges.append({
                 'arrows': 'to' if edge['type'] != 'pair' else '',
                 'dashes': edge['type'] in ('pair', 'tailx'),
                 #'physics': edge['type'] != 'tailx',
-                #'length': None if edge['type'] != 'pair' else 10,
                 'title': edge['type'],
                 'from': edge['edge'][0],
                 'to': edge['edge'][1],
@@ -315,7 +338,7 @@ def main(disk, block_size=512):
                 } if edge['type'] == 'list' else True
             })
 
-        vis = {'nodes': visnodes, 'edges': visedges}
+        vis = {'nodes': visnodes, 'edges': visedges, 'blocks': visblocks}
         sys.stdout.write(json.dumps(vis))
         sys.stdout.write('\n')
 

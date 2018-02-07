@@ -1,20 +1,103 @@
 <html>
 <head>
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
+    <script type="text/javascript" src="https://unpkg.com/split.js/split.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css" rel="stylesheet" type="text/css" />
 
-    <style type="text/css">
-        #mynetwork {
-            width: 100%;
-            height: 100%;
-            border: 1px solid lightgray;
-        }
+    <style>
+    html {
+        height: 100%
+    }
+    body {
+        height: calc(100% - 4px);
+        margin: 0px;
+        padding: 4px;
+        background-color: #F6F6F6;
+        box-sizing: border-box;
+    }
+    .split {
+        box-sizing: border-box;
+        overflow-y: auto;
+        overflow-x: hidden;
+        border: 1px solid #C0C0C0;
+        box-shadow: inset 0 1px 2px #e4e4e4;
+        background-color: #fff;
+    }
+    .gutter {
+        background-color: transparent;
+        background-repeat: no-repeat;
+        background-position: 50%;
+    }
+    .gutter.gutter-horizontal {
+        cursor: col-resize;
+        background-image:  url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAeCAYAAADkftS9AAAAIklEQVQoU2M4c+bMfxAGAgYYmwGrIIiDjrELjpo5aiZeMwF+yNnOs5KSvgAAAABJRU5ErkJggg==')
+    }
+    .split, .gutter.gutter-horizontal {
+        height: 100%;
+        float: left;
+    }
+    #fsnet {
+        width: 100%;
+        height: 100%;
+    }
+    #fsblock {
+        overflow-y: hidden;
+    }
+    #fsblock textarea {
+        font-family: monospace;
+        font-size: 10px;
+        border: 0;
+        width: 100%;
+        height: 100%;
+        resize: none;
+    }
     </style>
 </head>
 <body>
-<div id="mynetwork"></div>
+<div id="fsnet" class="split"></div>
+<div id="fsblock" class="split">
+<textarea readonly wrap=off id="fsblocktextarea">
+click on a block to view data
+</textarea>
+</div>
 
 <script type="text/javascript">
+    // split
+    Split(['#fsnet', '#fsblock'], {
+        sizes: [66, 33],
+        gutterSize: 8,
+        direction: 'horizontal'
+    })
+
+    // hexdump util, expects base64
+    function hexdump(data) {
+        var output = []
+        var raw = window.atob(data)
+
+        for (var i = 0; i < raw.length; i += 16) {
+            output.push(('00000000' + i.toString(16)).slice(-8))
+            output.push(': ')
+            var line = []
+            for (var j = 0; j < 16; j++) {
+                var code = raw.charCodeAt(i+j)
+                output.push(('00' + (raw.charCodeAt(i+j) || 0)
+                        .toString(16)).slice(-2))
+                output.push(' ')
+
+                if (code >= 32 && code <= 126) {
+                    line.push(String.fromCharCode(code))
+                } else {
+                    line.push('.')
+                }
+            }
+            output.push(' ')
+            output.push(line.join(''))
+            output.push('\n')
+        }
+
+        return output.join('')
+    }
+
     // get the data
     var xhr = new XMLHttpRequest();
     xhr.open('GET', 'data.json', true);
@@ -26,28 +109,21 @@
         var edges = new vis.DataSet(data.edges)
 
         // create a network
-        var container = document.getElementById('mynetwork');
+        var container = document.getElementById('fsnet');
+        var textarea = document.getElementById('fsblocktextarea');
 
         // provide the data in the vis format
-        var data = {
+        var visdata = {
             nodes: nodes,
             edges: edges
         };
         var options = {
-            layout: {
-                //hierarchical: {
-                //    direction: 'LR',
-                //},
-            },
+            autoResize: true,
             edges: {
                 arrows: 'to',
                 font: {
                     align: 'middle'
                 },
-                //smooth: {
-                    //type: 'diagonalCross',
-                    //roundness: 0.25
-                //}
             },
             nodes: {
                 shape: 'box',
@@ -63,11 +139,37 @@
                     align: 'left',
                     size: 9,
                 }
+            },
+            groups: {
+                invalid: {
+                    color: {
+                        'border': 'black',
+                        'background': 'white',
+                        'highlight': {
+                            'border': 'black',
+                            'background': 'white',
+                        }
+                    }
+                }
             }
         };
 
         // initialize your network!
-        var network = new vis.Network(container, data, options);
+        network = new vis.Network(container, visdata, options);
+
+        // setup callback to render data
+        network.on('selectNode', function(e) {
+            block = e.nodes[0];
+
+            if (data.blocks[block]) {
+                textarea.innerHTML = (data.blocks[block].info +
+                    '\n' + hexdump(data.blocks[block].raw));
+            } else {
+                textarea.innerHTML = (
+                    "invalid\nblock " + block.toString(16) + "\n\n"
+                );
+            }
+        })
     };
     xhr.send();
 </script>
