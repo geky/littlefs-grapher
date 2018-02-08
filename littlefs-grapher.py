@@ -31,7 +31,7 @@ def get_dir(pair):
             reason = 'bad size'
             continue
 
-        crc = ~binascii.crc32(dats[0][:size])
+        crc = ~binascii.crc32(dats[i][:size])
         if crc != 0:
             refs.append(None)
             reason = 'bad crc'
