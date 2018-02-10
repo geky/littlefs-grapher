@@ -89,7 +89,15 @@ click on a function to view dissassembly
             edges: edges
         };
         var options = {
+            physics: {
+                barnesHut: {
+                    springConstant: 0.004,
+                }
+            },
             edges: {
+                smooth: {
+                    type: 'continuous'
+                },
                 arrows: 'to',
             },
             nodes: {

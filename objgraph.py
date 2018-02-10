@@ -7,7 +7,7 @@ import re
 import itertools
 import json
 
-
+PREFIX = 'arm-none-eabi-'
 TYPES = {
     't': 'text',
     'b': 'bss',
@@ -19,7 +19,7 @@ def getsizes(objs):
     for obj in objs:
         file = os.path.basename(obj)
 
-        raw = subprocess.check_output(['nm', '-S', obj])
+        raw = subprocess.check_output([PREFIX+'nm', '-S', obj])
 
         for line in raw.splitlines():
             if line.endswith(':'):
@@ -43,12 +43,12 @@ def getasms(objs):
         off = 0
         asm = []
 
-        raw = subprocess.check_output(['objdump', '-d', obj])
+        raw = subprocess.check_output([PREFIX+'objdump', '-d', obj])
 
         for line in itertools.chain(raw.splitlines(), ['']):
             m = re.match('^([^ ]+):', line)
             if m:
-                file = m.group(1)
+                file = os.path.basename(m.group(1))
                 continue
 
             m = re.match('^([^ ]+) <([^ ]+)>:', line)
@@ -73,12 +73,12 @@ def getrelocs(objs):
     for obj in objs:
         file = os.path.basename(obj)
 
-        raw = subprocess.check_output(['objdump', '-r', obj])
+        raw = subprocess.check_output([PREFIX+'objdump', '-r', obj])
 
         for line in raw.splitlines():
             m = re.match('^([^ ]+):', line)
             if m:
-                file = m.group(1)
+                file = os.path.basename(m.group(1))
                 continue
 
             m = re.match('^([0-9a-fA-F]+) +[^ ]+ +([^+-]+)', line)
@@ -95,7 +95,7 @@ def main(*objs):
     symbols = {}
 
     for file, sym, type, size in getsizes(objs):
-        assert sym not in symbols
+        #assert sym not in symbols
         symbols[sym] = {
             'file': file,
             'sym': sym,
@@ -117,7 +117,7 @@ def main(*objs):
 
     for file, off, reloc in getrelocs(objs):
         for sym in symbols.itervalues():
-            if sym['file'] == file:
+            if sym['file'] == file and sym['sym'] != reloc:
                 if ('off' in sym and off >= sym['off'] and
                         off < sym['off'] + sym['size']):
                     sym['deps'].add(reloc)
